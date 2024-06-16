@@ -20,23 +20,23 @@ exports.signup = (req, res, next) => {
     bcrypt
         .hash(password, 12)
         .then((hashedPw) => {
-        const user = new User({
-            name: name,
-            email: email,
-            password: hashedPw,
-        });
-        return user.save();
+            const user = new User({
+                name: name,
+                email: email,
+                password: hashedPw,
+            });
+            return user.save();
         })
         .then((result) => {
             res.status(201).json({ message: "User created", userId: result._id });
         })
         .catch((err) => {
-        if (!err.statusCode) {
-            err.statusCode = 500;
-        }
-        next(err);
-    });
-};
+            if (!err.statusCode) {
+                err.statusCode = 500;
+            }
+            next(err);
+        });
+};  
 
 
 exports.login = (req, res, next) => {
