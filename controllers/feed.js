@@ -3,6 +3,7 @@ const Post = require("../models/post");
 const fs = require("fs");
 const path = require("path");
 const User = require('../models/user');
+const io = require('../socket');
 
 exports.getPosts = (req, res, next) => {
   const currentPage = req.query.page || 1;
@@ -14,6 +15,8 @@ exports.getPosts = (req, res, next) => {
     .then((count) => {
       totalItems = count;
       return Post.find()
+        .populate('creator')
+        .sort({ createdAt: -1 })  // -1 means descending order
         .skip((currentPage - 1) * perPage)
         .limit(perPage);
     })
@@ -34,6 +37,28 @@ exports.getPosts = (req, res, next) => {
     });
 };
 
+    //  IF YOU WANT TO USE ASYNC AWAIT
+    //   const totalItems = await Post.find().countDocuments()
+    //   const posts = await Post.find()
+    //         .skip((currentPage - 1) * perPage)
+    //         .limit(perPage);
+  
+    //   res
+    //     .status(200)
+    //     .json({
+    //       message: "Posts fetched",
+    //       posts: posts,
+    //       totalItems: totalItems,
+    //     });
+
+    // catch(err){
+    //     if (!err.statusCode) {
+    //       err.statusCode = 500;
+    //     }
+    //     next(err);
+    // }
+
+
 exports.createPost = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -51,7 +76,8 @@ exports.createPost = (req, res, next) => {
   const content = req.body.content;
   const imageUrl = req.file.path;
   let creator;
-
+  let userName;
+  
   // Create post in db
   const post = new Post({
     title: title,
@@ -68,10 +94,12 @@ exports.createPost = (req, res, next) => {
     })
     .then(user => {
       creator = user;
+      userName = user.name;
       user.posts.push(post);
       return user.save();
     })
     .then(result => {
+      io.getIO().emit('posts', { action: 'create', post: {...post._doc, creator: { _id: req.userId, name: userName } } }) // post._doc means all the properties/data of the post
       res.status(201).json({
         message: "Post created successfully!",
         post: post,
@@ -129,7 +157,7 @@ exports.updatePost = (req, res, next) => {
     throw error;
   }
 
-  Post.findById(postId)
+  Post.findById(postId).populate('creator')
     .then((post) => {
       if (!post) {
         const error = new Error("Could not find post.");
@@ -137,7 +165,7 @@ exports.updatePost = (req, res, next) => {
         throw error;
       }
 
-      if(post.creator.toString() !== req.userId){
+      if(post.creator._id.toString() !== req.userId){
         const error = new Error('Not Authorized');
         error.statusCode = 403;
         throw error;
@@ -154,6 +182,7 @@ exports.updatePost = (req, res, next) => {
       return post.save();
     })
     .then((result) => {
+      io.getIo().emit('posts', { action: 'update', post: result })
       res.status(200).json({ message: "Post Updated", post: result });
     })
     .catch((err) => {
@@ -199,6 +228,7 @@ exports.deletePost = (req, res, next) => {
     })
     .then(result => {
       console.log(result);
+      io.getIO().emit('posts', { action: 'delete', post: postId });
       res.status(200).json({ message: "Post Deleted" });
     })
     .catch((err) => {
